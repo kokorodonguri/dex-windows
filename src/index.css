@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+/* Semantic tokens (Apple system palette). Components use these names, so
+   light/dark switch in one place instead of per-element `dark:` pairs. */
+:root {
+  /* Native controls (range tracks, select popups, scrollbars) follow the scheme. */
+  color-scheme: light dark;
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --field: #ffffff;
+  --label: #1d1d1f;
+  --label-2: #86868b;
+  --hairline: rgba(0, 0, 0, 0.06);
+  --fill: rgba(120, 120, 128, 0.12);
+  --fill-strong: rgba(120, 120, 128, 0.32);
+  --segment-selected: #ffffff;
+  --accent: #007aff;
+  --accent-strong: #0062cc;
+  --green: #248a3d;
+  --orange: #b25000;
+  --red: #d70015;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --field: #2c2c2e;
+    --label: #f5f5f7;
+    --label-2: #98989d;
+    --hairline: rgba(255, 255, 255, 0.08);
+    --fill: rgba(120, 120, 128, 0.24);
+    --fill-strong: rgba(120, 120, 128, 0.4);
+    --segment-selected: #636366;
+    --accent: #0a84ff;
+    --accent-strong: #409cff;
+    --green: #30d158;
+    --orange: #ff9f0a;
+    --red: #ff453a;
+  }
+}
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo UI", system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-field: var(--field);
+  --color-label: var(--label);
+  --color-label-2: var(--label-2);
+  --color-hairline: var(--hairline);
+  --color-fill: var(--fill);
+  --color-fill-strong: var(--fill-strong);
+  --color-segment-selected: var(--segment-selected);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-ok: var(--green);
+  --color-warn: var(--orange);
+  --color-danger: var(--red);
+  /* Resting material: hairline contact shadow + very soft ambient shadow. */
+  --shadow-material: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
+  /* Floating layers (menus, dialogs, toasts). */
+  --shadow-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--label);
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Continuous (squircle) corners where the engine supports them; the plain
+   border-radius is the fallback. */
+@supports (corner-shape: squircle) {
+  .rounded-lg,
+  .rounded-xl,
+  .rounded-2xl {
+    corner-shape: squircle;
+  }
+}
+
+input,
+textarea,
+select {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.ime-sink {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  resize: none;
+  pointer-events: none;
+  caret-color: transparent;
+}
+
+/* Shown only while an IME composition is in progress (see SessionScreen). */
+.ime-sink.ime-sink--composing {
+  z-index: 25;
+  width: auto;
+  height: auto;
+  min-width: 2ch;
+  max-width: 20em;
+  field-sizing: content;
+  padding: 4px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--label);
+  font: inherit;
+  font-size: 15px;
+  line-height: 20px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  caret-color: var(--accent);
+  opacity: 1;
+  overflow: hidden;
+  box-shadow: var(--shadow-popover);
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgb(128 128 128 / 0.35);
+  border-radius: 4px;
+}

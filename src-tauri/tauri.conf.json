@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Modern DeX for PC",
+  "version": "0.1.0",
+  "identifier": "dev.moderndex.pc",
+  "build": {
+    "beforeDevCommand": "npm run vite:dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run vite:build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Modern DeX for PC",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 480,
+        "resizable": true,
+        "transparent": true,
+        "center": true,
+        "dragDropEnabled": true,
+        "windowEffects": {
+          "effects": ["mica"]
+        }
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:*; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:",
+      "devCsp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "category": "Utility",
+    "shortDescription": "Samsung DeX client for Windows",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "resources/bin/*": "bin/"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" }
+    }
+  }
+}
