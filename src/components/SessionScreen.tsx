@@ -22,6 +22,7 @@ interface Props {
   endpoint: Endpoint;
   settings: Settings;
   settingsOpen: boolean;
+  disconnecting: boolean;
   audio: AudioPlayer;
   onDisconnect: () => void;
   onOpenSettings: () => void;
@@ -46,7 +47,7 @@ const TOOLBAR_REVEAL_DELAY_MS = 400;
 
 const wsUrl = (ep: Endpoint, path: string) => `ws://127.0.0.1:${ep.port}${path}?token=${ep.token}`;
 
-export function SessionScreen({ session, endpoint, settings, settingsOpen, audio, onDisconnect, onOpenSettings, onOpenLog, onPatchSettings }: Props) {
+export function SessionScreen({ session, endpoint, settings, settingsOpen, disconnecting, audio, onDisconnect, onOpenSettings, onOpenLog, onPatchSettings }: Props) {
   const toast = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -69,8 +70,11 @@ export function SessionScreen({ session, endpoint, settings, settingsOpen, audio
   const phoneScreenBusy = useRef(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
-  const appsOpenRef = useRef(false);
   const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
+  // Keys from the low-level hook bypass the DOM, so they must be dropped
+  // explicitly while a dialog owns the keyboard.
+  const modalOpenRef = useRef(false);
+  modalOpenRef.current = appsOpen || guideOpen || disconnectConfirmOpen || settingsOpen || disconnecting;
   const toolbarInteracting = useRef(false);
   const toolbarLocked = useRef(false);
   const guidePrompted = useRef(false);
@@ -110,11 +114,15 @@ export function SessionScreen({ session, endpoint, settings, settingsOpen, audio
 
   const toggleFullscreen = useCallback(async () => {
     const win = getCurrentWindow();
-    const next = !(await win.isFullscreen());
-    await win.setFullscreen(next);
-    setFullscreen(next);
+    try {
+      const next = !(await win.isFullscreen());
+      await win.setFullscreen(next);
+      setFullscreen(next);
+    } catch (e) {
+      toast.show("error", "全画面を切り替えられませんでした", errorMessage(e));
+    }
     inputRef.current?.focus();
-  }, []);
+  }, [toast]);
 
   // Local shortcuts must see the latest callbacks
   const shortcutRef = useRef<(e: KeyboardEvent) => boolean>(() => false);
@@ -210,7 +218,7 @@ export function SessionScreen({ session, endpoint, settings, settingsOpen, audio
       try {
         const ev = JSON.parse(e.data) as HookEvent;
         if (ev.t === "key") {
-          if (appsOpenRef.current) return;
+          if (modalOpenRef.current) return;
           if (ev.down && (ev.code === "AltLeft" || ev.code === "AltRight")) showToolbar();
           input.handleKey(ev.code, "", ev.down, ev.repeat);
         }
@@ -458,23 +466,24 @@ export function SessionScreen({ session, endpoint, settings, settingsOpen, audio
         onShow={showToolbar}
         onInteractionChange={setToolbarInteraction}
         onMenuOpenChange={setMenuOpen}
-          onOpenGuide={() => setGuideOpen(true)}
-          onOpenApps={() => { inputRef.current?.releaseAll(); appsOpenRef.current = true; setAppsOpen(true); }}
+        onOpenGuide={() => setGuideOpen(true)}
+        onOpenApps={() => { inputRef.current?.releaseAll(); modalOpenRef.current = true; setAppsOpen(true); }}
         onDisconnect={requestDisconnect}
       />
 
       {statsVisible && <LiveStatsOverlay source={statsRef} />}
       <DeviceLockNotice key={session.id} sessionId={session.id} />
 
-      {connectionPhase !== "connected" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/35 text-white/75">
+      {(connectionPhase !== "connected" || disconnecting) && (
+        // While disconnecting it also covers the toolbar: nothing there applies any more.
+        <div role="status" className={`absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/35 text-white/75 ${disconnecting ? "z-40" : ""}`}>
           <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/25 border-t-white/80" />
-          <span className="text-sm">{connectionPhase === "reconnecting" ? "接続が途切れました。再接続しています…" : "DeX の映像に接続しています…"}</span>
+          <span className="text-sm">{disconnecting ? "DeX を切断しています…" : connectionPhase === "reconnecting" ? "接続が途切れました。再接続しています…" : "DeX の映像に接続しています…"}</span>
         </div>
       )}
 
       {guideOpen && <SessionGuide onClose={closeGuide} />}
-      {appsOpen && <AppLauncher key={session.id} sessionId={session.id} onClose={() => { appsOpenRef.current = false; setAppsOpen(false); inputRef.current?.focus(); }} />}
+      {appsOpen && <AppLauncher key={`apps-${session.id}`} sessionId={session.id} onClose={() => { setAppsOpen(false); inputRef.current?.focus(); }} />}
       {disconnectConfirmOpen && <DisconnectConfirm onCancel={() => { setDisconnectConfirmOpen(false); inputRef.current?.focus(); }} onConfirm={() => { setDisconnectConfirmOpen(false); onDisconnect(); }} />}
 
       {dragging && (

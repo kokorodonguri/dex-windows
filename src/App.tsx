@@ -11,9 +11,12 @@ function Shell() {
   const toast = useToast();
   const [env, setEnv] = useState<EnvInfo | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [devices, setDevices] = useState<DeviceInfo[]>([]);
+  // null until the first list arrives: "no devices" must not flash at startup.
+  const [devices, setDevices] = useState<DeviceInfo[] | null>(null);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const disconnectInFlight = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [audio] = useState(() => new AudioPlayer());
@@ -47,9 +50,15 @@ function Shell() {
       settingsRef.current = value;
       setSettings(value);
     }, initFailed);
-    void api.getDevices().then((list) => {
-      if (!devicesFromEvent) setDevices(list);
-    }, initFailed);
+    void api.getDevices().then(
+      (list) => {
+        if (!devicesFromEvent) setDevices(list);
+      },
+      (e) => {
+        if (!devicesFromEvent) setDevices([]);
+        initFailed(e);
+      },
+    );
     void api.getSession().then((s) => {
       if (s && !endedSessions.has(s.id)) setSession(s);
     }, initFailed);
@@ -80,15 +89,20 @@ function Shell() {
   );
 
   const disconnect = useCallback(async () => {
+    if (disconnectInFlight.current) return;
+    disconnectInFlight.current = true;
+    setDisconnecting(true);
     try {
       await api.stopSession();
+      setSession(null);
     } catch (e) {
       // The session is still running: keep showing it instead of a
       // disconnected screen that contradicts the device.
       toast.show("error", "切断に失敗しました", errorMessage(e));
-      return;
+    } finally {
+      disconnectInFlight.current = false;
+      setDisconnecting(false);
     }
-    setSession(null);
   }, [toast]);
 
   /** Resolves true once `next` is stored by the backend. */
@@ -142,6 +156,7 @@ function Shell() {
           endpoint={env.endpoint}
           settings={settings}
           settingsOpen={settingsOpen}
+          disconnecting={disconnecting}
           audio={audio}
           onDisconnect={() => void disconnect()}
           onOpenSettings={() => setSettingsOpen(true)}

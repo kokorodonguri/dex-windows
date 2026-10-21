@@ -47,13 +47,13 @@ export function Toolbar(p: Props) {
       <div aria-hidden={!p.visible} inert={!p.visible} className={`relative max-w-full transition-all duration-200 ${p.visible ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none -translate-y-16 opacity-0"}`} onMouseDown={(e) => e.target instanceof HTMLInputElement || e.preventDefault()}>
         {/* The material lives on this element only: a backdrop-filter nested inside another one cannot see what is behind the page, so the menu below is its sibling. */}
         <div className="flex items-center gap-1 rounded-2xl border border-white/[0.08] bg-[#1e1e1e]/75 px-2 py-1 shadow-popover backdrop-blur-xl">
-        <span className={`ml-1 h-2 w-2 shrink-0 rounded-full ${p.connected ? "bg-[#30d158]" : "animate-pulse bg-[#ff9f0a]"}`} title={p.connected ? "接続済み" : "再接続中"} />
+        <span role="img" aria-label={p.connected ? "接続済み" : "接続中"} title={p.connected ? "接続済み" : "接続中"} className={`ml-1 h-2 w-2 shrink-0 rounded-full ${p.connected ? "bg-[#30d158]" : "animate-pulse bg-[#ff9f0a]"}`} />
         <span className="hidden max-w-32 truncate px-1 text-xs text-white/70 md:block">{p.deviceName}</span>
         <div className="mx-1 h-6 w-px bg-white/[0.12]" />
         <NavButton label="戻る" icon="back" disabled={!p.connected} onClick={p.onBack} />
         <NavButton label="ホーム" icon="home" disabled={!p.connected} onClick={p.onHome} />
         <NavButton label="履歴" icon="recents" disabled={!p.connected} onClick={p.onRecents} />
-        <button type="button" disabled={!p.connected} onClick={p.onOpenApps} className={barButton}>アプリ</button>
+        <button type="button" disabled={!p.connected} onClick={p.onOpenApps} className={barButton}><Icon name="apps" /><span>アプリ</span></button>
         {p.audio && <><div className="mx-1 h-6 w-px bg-white/[0.12]" /><button type="button" aria-label={p.muted ? "ミュート解除" : "ミュート"} title={p.muted ? "ミュート解除" : "ミュート"} onClick={p.onToggleMute} className={barButton}><Icon name={p.muted ? "mute" : "volume"} /></button><input type="range" min={0} max={1} step={0.05} value={p.volume} onChange={(e) => p.onVolume(Number(e.target.value))} className="hidden w-16 accent-accent sm:block" aria-label="音量" /></>}
         <div className="mx-1 h-6 w-px bg-white/[0.12]" />
         <button type="button" aria-haspopup="menu" aria-expanded={p.menuOpen} onClick={() => p.onMenuOpenChange(!p.menuOpen)} className={`${barButton} ${p.menuOpen ? "bg-white/15" : ""}`}><Icon name="more" /> その他</button>

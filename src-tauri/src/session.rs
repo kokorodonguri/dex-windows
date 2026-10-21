@@ -90,29 +90,39 @@ fn pack_size(width: u32, height: u32) -> u64 {
     ((width as u64) << 32) | height as u64
 }
 
+/// Samsung's libstagefright (`ACodec::reconfigEncoder4OtherApps`, seen on
+/// SC-52A / Android 13) aborts with "stack corruption detected" when the
+/// server's argv area is 263 bytes or longer. Measured on device; options equal
+/// to the server defaults are therefore omitted.
+const MAX_SERVER_CMDLINE: usize = 262;
+const SERVER_ARGV_PREFIX: [&str; 3] = ["app_process", "/", "com.genymobile.scrcpy.Server"];
+
 /// Builds the `key=value` arguments for `com.genymobile.scrcpy.Server`.
+/// Server defaults (not sent): video_codec=h264, audio=true, audio_codec=opus,
+/// control=true, vd_system_decorations=true, vd_destroy_content=true,
+/// clipboard_autosync=true. log_level is sent because it defaults to debug.
 pub fn server_args(scid: u32, s: &Settings) -> Vec<String> {
     let mut args = vec![
         SERVER_VERSION.to_string(),
         format!("scid={scid:08x}"),
         "log_level=info".into(),
         "tunnel_forward=true".into(),
-        "video_codec=h264".into(),
         format!("video_bit_rate={}", s.bit_rate_mbps as u64 * 1_000_000),
         format!("max_fps={}", s.max_fps),
         format!("new_display={}x{}/{}", s.width, s.height, s.dpi),
-        "vd_system_decorations=true".into(),
-        format!("vd_destroy_content={}", s.destroy_content),
     ];
+    if !s.destroy_content {
+        args.push("vd_destroy_content=false".into());
+    }
     if let Some(policy) = s.ime_policy.server_value() {
         args.push(format!("display_ime_policy={policy}"));
     }
-    args.push(format!("audio={}", s.audio));
-    if s.audio {
-        args.push("audio_codec=opus".into());
+    if !s.audio {
+        args.push("audio=false".into());
     }
-    args.push("control=true".into());
-    args.push(format!("clipboard_autosync={}", s.clipboard_sync));
+    if !s.clipboard_sync {
+        args.push("clipboard_autosync=false".into());
+    }
     args.push("stay_awake=true".into());
     if s.flex_display {
         args.push("flex_display=true".into());
@@ -120,7 +130,13 @@ pub fn server_args(scid: u32, s: &Settings) -> Vec<String> {
     args
 }
 
-/// Parses `New display: 1920x1080/240 (id=18)` from a server log line.
+/// Length of the server's argv area as the device sees it (NUL-separated).
+fn server_cmdline_len(args: &[String]) -> usize {
+    SERVER_ARGV_PREFIX.iter().map(|a| a.len() + 1).sum::<usize>()
+        + args.iter().map(|a| a.len() + 1).sum::<usize>()
+        - 1
+}
+
 pub fn parse_new_display(line: &str) -> Option<(u32, u32, u32, u32)> {
     let rest = &line[line.find("New display: ")? + "New display: ".len()..];
     let (size, rest) = rest.split_once('/')?;
@@ -240,11 +256,16 @@ fn spawn_server(
         &p.serial,
         "shell",
         &format!("CLASSPATH={DEVICE_SERVER_PATH}"),
-        "app_process",
-        "/",
-        "com.genymobile.scrcpy.Server",
     ]);
-    cmd.args(server_args(scid, &p.settings));
+    cmd.args(SERVER_ARGV_PREFIX);
+    let args = server_args(scid, &p.settings);
+    let cmdline_len = server_cmdline_len(&args);
+    if cmdline_len > MAX_SERVER_CMDLINE {
+        log::warn!(
+            "scrcpy-server command line is {cmdline_len} bytes (> {MAX_SERVER_CMDLINE});              some Samsung devices abort with \"stack corruption detected\""
+        );
+    }
+    cmd.args(args);
     cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     let mut child: Child = cmd
@@ -881,6 +902,7 @@ pub async fn refresh_returned_apps(adb: &Adb, serial: &str, packages: &[String])
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::ImePolicy;
 
     #[test]
     fn new_display_line() {
@@ -928,9 +950,10 @@ mod tests {
         assert!(args.contains(&"scid=1234abcd".to_string()));
         assert!(args.contains(&"new_display=1920x1080/240".to_string()));
         assert!(args.contains(&"video_bit_rate=12000000".to_string()));
-        assert!(args.contains(&"vd_system_decorations=true".to_string()));
-        assert!(args.contains(&"audio_codec=opus".to_string()));
+        assert!(args.contains(&"vd_destroy_content=false".to_string()));
         assert!(args.contains(&"display_ime_policy=hide".to_string()));
+        assert!(!args.iter().any(|a| a.starts_with("audio")));
+        assert!(!args.iter().any(|a| a.starts_with("clipboard_autosync")));
         assert!(!args.iter().any(|a| a.starts_with("flex_display")));
         assert!(args.iter().all(|a| !a.contains(' ')));
     }
@@ -947,5 +970,24 @@ mod tests {
         assert!(args.contains(&"audio=false".to_string()));
         assert!(!args.iter().any(|a| a.starts_with("audio_codec")));
         assert!(args.contains(&"scid=00000001".to_string()));
+    }
+
+    #[test]
+    fn cmdline_fits_samsung_limit() {
+        // The configuration that crashed SC-52A (264+ bytes before trimming).
+        let s = Settings {
+            width: 2560,
+            height: 1440,
+            dpi: 210,
+            bit_rate_mbps: 40,
+            max_fps: 60,
+            flex_display: true,
+            ime_policy: ImePolicy::Local,
+            ..Default::default()
+        };
+        let args = server_args(0x27b205fd, &s);
+        assert!(server_cmdline_len(&args) <= MAX_SERVER_CMDLINE);
+        let measured = "app_process / com.genymobile.scrcpy.Server 4.1";
+        assert_eq!(server_cmdline_len(&args[..1]), measured.len());
     }
 }

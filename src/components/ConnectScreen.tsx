@@ -7,7 +7,8 @@ import { Button, Field, Group, Icon, inputClass } from "./ui";
 interface Props {
   env: EnvInfo | null;
   settings: Settings | null;
-  devices: DeviceInfo[];
+  /** null while the first device list is loading. */
+  devices: DeviceInfo[] | null;
   starting: string | null;
   onStart: (serial: string) => void;
   onOpenSettings: () => void;
@@ -51,12 +52,17 @@ export function ConnectScreen({ env, settings, devices, starting, onStart, onOpe
 
       <main className="grid grid-cols-1 items-start gap-x-8 gap-y-6 px-8 py-6 lg:grid-cols-[1fr_340px]">
         <section>
-          {devices.length === 0 ? (
+          {devices === null ? (
+            <div role="status" className="flex items-center justify-center gap-2 px-6 py-16 text-sm text-label-2">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-fill-strong border-t-label-2" />
+              デバイスを確認しています…
+            </div>
+          ) : devices.length === 0 ? (
             <div className="px-6 py-16 text-center">
               <Icon name="phone" className="mx-auto mb-3 h-10 w-10 text-label-2" />
               <div className="text-base font-semibold">デバイスが見つかりません</div>
               <p className="mx-auto mt-1 max-w-sm text-sm text-label-2">
-                USB ケーブルで接続し、端末の「開発者向けオプション → USB デバッグ」を ON にしてください。Wi-Fi の場合は右のフォームから接続できます。
+                USB ケーブルで接続し、端末の「開発者向けオプション → USB デバッグ」を ON にしてください。Wi-Fi の場合は「Wi-Fi 接続」から接続できます。
               </p>
             </div>
           ) : (
@@ -115,30 +121,41 @@ function DeviceRow({ device: d, starting, onStart }: { device: DeviceInfo; start
   );
 }
 
+/** Same shape the backend accepts (host:port); the backend still has the final say. */
+function looksLikeEndpoint(value: string): boolean {
+  const m = /^(\S+):(\d{1,5})$/.exec(value.trim());
+  return !!m && Number(m[2]) >= 1 && Number(m[2]) <= 65535;
+}
+
+const ENDPOINT_HINT = "「IP:ポート」の形式で入力してください";
+
 function WifiCard() {
   const toast = useToast();
   const [address, setAddress] = useState("");
   const [pairAddress, setPairAddress] = useState("");
   const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
+  // Which form is running: both are blocked, only that one says so.
+  const [busy, setBusy] = useState<"connect" | "pair" | null>(null);
   const busyRef = useRef(false);
 
-  const run = async (failTitle: string, fn: () => Promise<string>) => {
+  const run = async (kind: "connect" | "pair", successTitle: string, failTitle: string, fn: () => Promise<string>) => {
     if (busyRef.current) return; // Enter and the button can both fire
     busyRef.current = true;
-    setBusy(true);
+    setBusy(kind);
     try {
-      toast.show("success", await fn());
+      toast.show("success", successTitle, await fn());
     } catch (e) {
       toast.show("error", failTitle, errorMessage(e));
     } finally {
       busyRef.current = false;
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  const canConnect = address.trim() !== "";
-  const canPair = pairAddress.trim() !== "" && /^\d{6}$/.test(code);
+  const addressInvalid = address.trim() !== "" && !looksLikeEndpoint(address);
+  const pairAddressInvalid = pairAddress.trim() !== "" && !looksLikeEndpoint(pairAddress);
+  const canConnect = looksLikeEndpoint(address);
+  const canPair = looksLikeEndpoint(pairAddress) && /^\d{6}$/.test(code);
   const submit = (ok: boolean, action: () => void) => (e: FormEvent) => {
     e.preventDefault();
     if (ok && !busy) action();
@@ -146,21 +163,21 @@ function WifiCard() {
 
   return (
     <Group title="Wi-Fi 接続" footer="端末の「ワイヤレスデバッグ」画面に表示される IP アドレスとポートを入力します">
-      <form className="px-4 py-2" onSubmit={submit(canConnect, () => void run("接続できませんでした", () => api.adbConnect(address.trim())))}>
-        <Field label="接続先 (IP:ポート)">
+      <form className="px-4 py-2" onSubmit={submit(canConnect, () => void run("connect", "接続しました", "接続できませんでした", () => api.adbConnect(address.trim())))}>
+        <Field label="接続先 (IP:ポート)" hint={addressInvalid ? ENDPOINT_HINT : undefined}>
           <div className="flex gap-2">
-            <input className={inputClass} placeholder="192.168.1.20:37123" value={address} onChange={(e) => setAddress(e.target.value)} />
-            <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={busy || !canConnect}>
-              {busy ? "接続中…" : "接続"}
+            <input className={inputClass} placeholder="192.168.1.20:37123" aria-invalid={addressInvalid} value={address} onChange={(e) => setAddress(e.target.value)} />
+            <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={busy !== null || !canConnect}>
+              {busy === "connect" ? "接続中…" : "接続"}
             </Button>
           </div>
         </Field>
       </form>
       <details className="px-4 py-2.5">
         <summary className="cursor-pointer text-sm text-accent">初回のみ: ペアリングコードでペア設定</summary>
-        <form onSubmit={submit(canPair, () => void run("ペア設定できませんでした", () => api.adbPair(pairAddress.trim(), code)))}>
-          <Field label="ペアリング用 IP:ポート">
-            <input className={inputClass} placeholder="192.168.1.20:41234" value={pairAddress} onChange={(e) => setPairAddress(e.target.value)} />
+        <form onSubmit={submit(canPair, () => void run("pair", "ペア設定しました", "ペア設定できませんでした", () => api.adbPair(pairAddress.trim(), code)))}>
+          <Field label="ペアリング用 IP:ポート" hint={pairAddressInvalid ? ENDPOINT_HINT : undefined}>
+            <input className={inputClass} placeholder="192.168.1.20:41234" aria-invalid={pairAddressInvalid} value={pairAddress} onChange={(e) => setPairAddress(e.target.value)} />
           </Field>
           <Field label="Wi-Fi ペアリングコード (6 桁)">
             <div className="flex gap-2">
@@ -171,8 +188,8 @@ function WifiCard() {
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               />
-              <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={busy || !canPair}>
-                {busy ? "ペア設定中…" : "ペア設定"}
+              <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={busy !== null || !canPair}>
+                {busy === "pair" ? "ペア設定中…" : "ペア設定"}
               </Button>
             </div>
           </Field>
@@ -204,11 +221,12 @@ function StatusCard({ env }: { env: EnvInfo | null }) {
 
   return (
     <Group title="環境チェック" footer={env && `バージョン ${env.appVersion}`}>
-      <StatusRow ok={env ? !!env.adbPath : null} label="ADB" detail={env?.adbPath ? `${env.adbVersion ?? ""} — ${env.adbPath}` : "adb.exe が見つかりません"} />
+      {/* Until env arrives the rows are unknown (grey), not failed. */}
+      <StatusRow ok={env ? !!env.adbPath : null} label="ADB" detail={env && (env.adbPath ? `${env.adbVersion ?? ""} — ${env.adbPath}` : "adb.exe が見つかりません")} />
       <StatusRow
         ok={env ? !!env.serverPath : null}
         label={`scrcpy-server v${env?.serverVersion ?? "4.1"}`}
-        detail={env?.serverPath ?? "npm run fetch:bin を実行してください"}
+        detail={env && (env.serverPath ?? "npm run fetch:bin を実行してください")}
       />
       <StatusRow
         ok={codecs ? codecs.h264 : null}

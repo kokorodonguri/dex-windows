@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { attachLogger } from "@tauri-apps/plugin-log";
 import { RecentBuffer } from "../lib/recent-buffer";
-import { Button, Icon } from "./ui";
+import { CloseButton } from "./ui";
 
 export interface LogLine {
   id: number;
@@ -56,9 +56,7 @@ export function LogPanel({ lines, logDir, onClose }: { lines: LogLine[]; logDir:
         <div className="min-w-0 truncate text-sm font-medium">
           ログ {logDir && <span className="ml-2 select-text text-xs font-normal text-label-2">{logDir}</span>}
         </div>
-        <Button variant="ghost" onClick={onClose} aria-label="閉じる">
-          <Icon name="close" />
-        </Button>
+        <CloseButton onClick={onClose} />
       </div>
       <div
         ref={scroller}

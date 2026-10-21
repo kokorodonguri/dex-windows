@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useLayoutEffect, useRef, type ComponentProps, type ReactNode, type RefObject } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -13,7 +13,7 @@ const variants: Record<Variant, string> = {
   danger: "border-transparent bg-danger text-white shadow-[inset_0_0.5px_0_rgba(255,255,255,0.3)] hover:brightness-95 active:brightness-90",
 };
 
-export function Button({ variant = "secondary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+export function Button({ variant = "secondary", className = "", ...props }: ComponentProps<"button"> & { variant?: Variant }) {
   return (
     <button
       type="button"
@@ -93,6 +93,59 @@ export function Segmented<T extends string | number>({ label, value, options, on
   );
 }
 
+/**
+ * Native modal dialog: focus moves inside and stays there, Escape calls
+ * `onCancel`, and the page behind (including the DeX input sink) is inert.
+ * Mounting opens it; the owner closes it by unmounting.
+ */
+export function Dialog({ labelledBy, role, initialFocus, closeOnBackdrop, onCancel, className = "", children }: {
+  labelledBy: string;
+  role?: "alertdialog";
+  initialFocus?: RefObject<HTMLElement | null>;
+  closeOnBackdrop?: boolean;
+  onCancel: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  // Layout effect: opened before the first paint, so it never flashes in the page flow.
+  useLayoutEffect(() => {
+    const dialog = ref.current!;
+    dialog.showModal();
+    initialFocus?.current?.focus();
+    return () => dialog.close();
+  }, [initialFocus]);
+  return (
+    <dialog
+      ref={ref}
+      role={role}
+      aria-labelledby={labelledBy}
+      onCancel={(e) => {
+        // The owner decides; the element closes when it unmounts.
+        e.preventDefault();
+        onCancel();
+      }}
+      // Only the backdrop hits the <dialog> itself: its children fill the box.
+      onMouseDown={closeOnBackdrop ? (e) => e.target === e.currentTarget && onCancel() : undefined}
+      className={`m-auto shadow-popover outline-none backdrop:bg-black/40 ${className}`}
+    >
+      {children}
+    </dialog>
+  );
+}
+
+/** Dark material shared by the dialogs over the DeX video. */
+export const darkPanelClass = "theme-dark rounded-2xl border border-white/[0.08] bg-[#1e1e1e] text-white backdrop:backdrop-blur-sm";
+
+/** Icon-only close button for dialog and panel headers. */
+export function CloseButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="ghost" onClick={onClick} aria-label="閉じる" title="閉じる" className="shrink-0 px-2">
+      <Icon name="close" />
+    </Button>
+  );
+}
+
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "green" | "blue" | "amber" | "red" }) {
   const tones = {
     neutral: "bg-fill text-label-2",
@@ -132,6 +185,7 @@ type IconName =
   | "upload"
   | "refresh"
   | "more"
+  | "apps"
   | "help";
 
 const ICONS: Record<IconName, ReactNode> = {
@@ -163,5 +217,6 @@ const ICONS: Record<IconName, ReactNode> = {
   upload: <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />,
   refresh: <path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6" />,
   more: <path d="M5 12h.01M12 12h.01M19 12h.01" />,
+  apps: <path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z" />,
   help: <><circle cx="12" cy="12" r="9" /><path d="M9.8 9a2.3 2.3 0 114.2 1.3c-.7.8-2 1-2 2.7M12 17h.01" /></>,
 };
