@@ -41,6 +41,11 @@ describe("keymap", () => {
     m.update("ShiftLeft", true);
     expect(routeKey("Digit2", '"', m)).toEqual({ kind: "text", text: '"' });
     expect(routeKey("BracketLeft", "`", m)).toEqual({ kind: "text", text: "`" });
+    // JIS 半角/全角 toggles the PC IME; it must not reach the device as "`"
+    for (const key of ["Zenkaku", "Hankaku", "ZenkakuHankaku", "KanjiMode"]) {
+      expect(routeKey("Backquote", key, m)).toEqual({ kind: "ignore" });
+    }
+    expect(routeKey("Backquote", "`", m)).toEqual({ kind: "text", text: "`" });
     m.update("ShiftLeft", false);
     expect(routeKey("ArrowLeft", "ArrowLeft", m)).toEqual({ kind: "keycode", keycode: 21 });
   });

@@ -171,7 +171,16 @@ pub fn vk_to_code(vk: u32, extended: bool) -> Option<&'static str> {
 pub struct HookState {
     /// Keys whose key-down was swallowed (their key-up must be swallowed too).
     swallowed: std::collections::HashSet<u32>,
+    /// A key was swallowed while Alt/Ctrl (which Windows still sees) was
+    /// held. Windows would then see the modifier pressed and released alone:
+    /// a lone Alt opens the window menu, and Alt+Shift / Ctrl+Shift switch
+    /// the input language or keyboard layout (e.g. away from the Japanese
+    /// IME). The hook must slip an unassigned key in between (`MASK_VK`).
+    mask_pending: bool,
 }
+
+/// Unassigned virtual-key code, used only to break up modifier-only presses.
+pub const MASK_VK: u16 = 0xE8;
 
 pub struct KeyInput {
     pub vk: u32,
@@ -182,8 +191,14 @@ pub struct KeyInput {
 }
 
 impl HookState {
+    /// Whether the key just swallowed by `process` needs `MASK_VK` injected.
+    pub fn take_mask(&mut self) -> bool {
+        std::mem::take(&mut self.mask_pending)
+    }
+
     /// Returns the event to forward when the key must be swallowed.
     pub fn process(&mut self, k: &KeyInput, active: bool) -> Option<HookKeyEvent> {
+        self.mask_pending = false;
         let code = vk_to_code(k.vk, k.extended);
         if !k.down {
             // Always complete a swallowed press, even if the hook became
@@ -214,6 +229,7 @@ impl HookState {
         }
         let code = code?;
         let repeat = !self.swallowed.insert(k.vk);
+        self.mask_pending = !repeat && (k.alt || k.ctrl);
         Some(HookKeyEvent {
             t: "key",
             code,
@@ -230,17 +246,40 @@ mod win {
 
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+        KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
         HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, LLKHF_EXTENDED, LLKHF_INJECTED, MSG,
         WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
-    use super::{HookState, KeyInput, ACTIVE, SENDER};
+    use super::{HookState, KeyInput, ACTIVE, MASK_VK, SENDER};
 
     thread_local! {
         static STATE: RefCell<HookState> = RefCell::new(HookState::default());
+    }
+
+    /// Taps `MASK_VK` (flagged as injected, so this hook ignores it) so the
+    /// held Alt/Ctrl is not seen as pressed alone. See `HookState::mask_pending`.
+    fn inject_mask_key() {
+        let key = |flags| INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(MASK_VK),
+                    dwFlags: flags,
+                    ..Default::default()
+                },
+            },
+        };
+        let inputs = [key(KEYBD_EVENT_FLAGS(0)), key(KEYEVENTF_KEYUP)];
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize != inputs.len() {
+            log::warn!("SendInput (mask key) sent {sent} of {} events", inputs.len());
+        }
     }
 
     unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -258,7 +297,14 @@ mod win {
                     extended: kb.flags.0 & LLKHF_EXTENDED.0 != 0,
                 };
                 let active = ACTIVE.load(Ordering::Relaxed);
-                if let Some(event) = STATE.with(|s| s.borrow_mut().process(&input, active)) {
+                let swallowed = STATE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.process(&input, active).map(|event| (event, s.take_mask()))
+                });
+                if let Some((event, mask)) = swallowed {
+                    if mask {
+                        inject_mask_key();
+                    }
                     if let Some(tx) = SENDER.get() {
                         let _ = tx.send(event);
                     }
@@ -388,6 +434,58 @@ mod tests {
         let up = s.process(&key(VK_LWIN, false), false).unwrap();
         assert!(!up.down);
         assert!(s.process(&key(VK_LWIN, false), false).is_none());
+    }
+
+    #[test]
+    fn swallowing_under_alt_or_ctrl_requests_a_mask_key() {
+        let mut s = HookState::default();
+        let alt_tab = KeyInput {
+            vk: VK_TAB,
+            down: true,
+            alt: true,
+            ctrl: false,
+            extended: false,
+        };
+        assert!(s.process(&alt_tab, true).is_some());
+        assert!(s.take_mask());
+        assert!(!s.take_mask(), "taken once");
+        // auto-repeat of the swallowed Tab: Windows already saw the mask
+        assert!(s.process(&alt_tab, true).unwrap().repeat);
+        assert!(!s.take_mask());
+        // key-up: nothing to mask
+        assert!(s
+            .process(
+                &KeyInput {
+                    down: false,
+                    ..alt_tab
+                },
+                true
+            )
+            .is_some());
+        assert!(!s.take_mask());
+        let ctrl_esc = KeyInput {
+            vk: VK_ESCAPE,
+            down: true,
+            alt: false,
+            ctrl: true,
+            extended: false,
+        };
+        assert!(s.process(&ctrl_esc, true).is_some());
+        assert!(s.take_mask());
+        // Win itself is swallowed: Windows sees no modifier to mask
+        assert!(s.process(&key(VK_LWIN, true), true).is_some());
+        assert!(!s.take_mask());
+        // passed-through keys never ask for a mask
+        assert!(s.process(&key(VK_LWIN, false), true).is_some());
+        let alt_a = KeyInput {
+            vk: 0x41,
+            down: true,
+            alt: true,
+            ctrl: false,
+            extended: false,
+        };
+        assert!(s.process(&alt_a, true).is_none());
+        assert!(!s.take_mask());
     }
 
     #[test]

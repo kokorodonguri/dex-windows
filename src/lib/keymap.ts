@@ -122,6 +122,8 @@ export type KeyRoute = { kind: "keycode"; keycode: number } | { kind: "text"; te
 
 const TEXT_ROUTED = /^(Digit\d|Minus|Equal|BracketLeft|BracketRight|Backslash|Semicolon|Quote|Backquote|Comma|Period|Slash|IntlBackslash|IntlRo|IntlYen)$/;
 
+const PC_IME_TOGGLE_KEYS = new Set(["Zenkaku", "Hankaku", "ZenkakuHankaku", "KanjiMode"]);
+
 /**
  * Decides how a key-down is injected. Digits/punctuation typed without
  * Ctrl/Alt/Meta are sent as text using `key` (the character produced by the
@@ -129,6 +131,9 @@ const TEXT_ROUTED = /^(Digit\d|Minus|Equal|BracketLeft|BracketRight|Backslash|Se
  * events with metastate.
  */
 export function routeKey(code: string, key: string, mods: ModifierState): KeyRoute {
+  // The PC IME's own on/off key (JIS 半角/全角 sits on code "Backquote"):
+  // forwarding it would type "`" on the device.
+  if (PC_IME_TOGGLE_KEYS.has(key)) return { kind: "ignore" };
   const shortcut = mods.has("ctrl") || mods.has("alt") || mods.has("meta");
   if (!shortcut && TEXT_ROUTED.test(code) && [...key].length === 1) {
     return { kind: "text", text: key };
