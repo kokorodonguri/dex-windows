@@ -15,6 +15,7 @@
     "test": "npm run test:web && npm run test:rust",
     "test:web": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:e2e": "node scripts/e2e/session-ime.mjs",
     "fetch:bin": "node scripts/fetch-binaries.mjs",
     "tauri": "tauri"
   },

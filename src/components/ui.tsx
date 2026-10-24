@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, type ComponentProps, type MouseEventHandler, type ReactNode, type RefObject } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -126,7 +126,13 @@ export function Dialog({ labelledBy, role, initialFocus, closeOnBackdrop, onCanc
         onCancel();
       }}
       // Only the backdrop hits the <dialog> itself: its children fill the box.
-      onMouseDown={closeOnBackdrop ? (e) => e.target === e.currentTarget && onCancel() : undefined}
+      // preventDefault: the click must not move the focus that closing just
+      // handed back (to the DeX input sink) onto <body>, where the IME is off.
+      onMouseDown={closeOnBackdrop ? (e) => {
+        if (e.target !== e.currentTarget) return;
+        e.preventDefault();
+        onCancel();
+      } : undefined}
       className={`m-auto shadow-popover outline-none backdrop:bg-black/40 ${className}`}
     >
       {children}
@@ -138,9 +144,9 @@ export function Dialog({ labelledBy, role, initialFocus, closeOnBackdrop, onCanc
 export const darkPanelClass = "theme-dark rounded-2xl border border-white/[0.08] bg-[#1e1e1e] text-white backdrop:backdrop-blur-sm";
 
 /** Icon-only close button for dialog and panel headers. */
-export function CloseButton({ onClick }: { onClick: () => void }) {
+export function CloseButton({ onClick, onMouseDown }: { onClick: () => void; onMouseDown?: MouseEventHandler<HTMLButtonElement> }) {
   return (
-    <Button variant="ghost" onClick={onClick} aria-label="閉じる" title="閉じる" className="shrink-0 px-2">
+    <Button variant="ghost" onClick={onClick} onMouseDown={onMouseDown} aria-label="閉じる" title="閉じる" className="shrink-0 px-2">
       <Icon name="close" />
     </Button>
   );

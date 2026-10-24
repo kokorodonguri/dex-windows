@@ -400,6 +400,17 @@ export function SessionScreen({ session, endpoint, settings, settingsOpen, disco
         const r = e.currentTarget.getBoundingClientRect();
         lastPointerRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
       }}
+      // A session control that loses focus to nothing (blurred, hidden, made
+      // inert) leaves it on <body>, where WebView2 switches the IME off: hand
+      // it back to the input sink. Focus leaving the sink itself is left alone
+      // (e.g. selecting text in the log panel).
+      onBlur={(e) => {
+        if ((e.target as EventTarget) === imeRef.current || e.relatedTarget || modalOpenRef.current) return;
+        window.requestAnimationFrame(() => {
+          const active = document.activeElement;
+          if ((!active || active === document.body) && !modalOpenRef.current) inputRef.current?.focus();
+        });
+      }}
     >
       <canvas
         ref={canvasRef}
@@ -476,7 +487,8 @@ export function SessionScreen({ session, endpoint, settings, settingsOpen, disco
 
       {(connectionPhase !== "connected" || disconnecting) && (
         // While disconnecting it also covers the toolbar: nothing there applies any more.
-        <div role="status" className={`absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/35 text-white/75 ${disconnecting ? "z-40" : ""}`}>
+        // preventDefault: a click on it must not take the focus off the input sink.
+        <div role="status" onMouseDown={(e) => e.preventDefault()} className={`absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/35 text-white/75 ${disconnecting ? "z-40" : ""}`}>
           <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/25 border-t-white/80" />
           <span className="text-sm">{disconnecting ? "DeX を切断しています…" : connectionPhase === "reconnecting" ? "接続が途切れました。再接続しています…" : "DeX の映像に接続しています…"}</span>
         </div>

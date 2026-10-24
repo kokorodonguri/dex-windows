@@ -43,7 +43,7 @@ export function Toolbar(p: Props) {
 
   return (
     <div ref={rootRef} className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-2 pt-2" onMouseEnter={() => p.onInteractionChange(true)} onMouseLeave={() => p.onInteractionChange(false)}>
-      <button type="button" aria-label="操作バーを表示" title="操作バーを表示" inert={p.visible} onClick={p.onShow} className={`absolute top-0 h-3 w-24 rounded-b-lg border-x border-b border-white/15 bg-[#1e1e1e]/75 backdrop-blur-xl transition-all hover:h-4 ${p.visible ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"}`}><span className="sr-only">操作バーを表示</span></button>
+      <button type="button" aria-label="操作バーを表示" title="操作バーを表示" inert={p.visible} onClick={p.onShow} onMouseDown={(e) => e.preventDefault()} className={`absolute top-0 h-3 w-24 rounded-b-lg border-x border-b border-white/15 bg-[#1e1e1e]/75 backdrop-blur-xl transition-all hover:h-4 ${p.visible ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"}`}><span className="sr-only">操作バーを表示</span></button>
       <div aria-hidden={!p.visible} inert={!p.visible} className={`relative max-w-full transition-all duration-200 ${p.visible ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none -translate-y-16 opacity-0"}`} onMouseDown={(e) => e.target instanceof HTMLInputElement || e.preventDefault()}>
         {/* The material lives on this element only: a backdrop-filter nested inside another one cannot see what is behind the page, so the menu below is its sibling. */}
         <div className="flex items-center gap-1 rounded-2xl border border-white/[0.08] bg-[#1e1e1e]/75 px-2 py-1 shadow-popover backdrop-blur-xl">
@@ -54,7 +54,7 @@ export function Toolbar(p: Props) {
         <NavButton label="ホーム" icon="home" disabled={!p.connected} onClick={p.onHome} />
         <NavButton label="履歴" icon="recents" disabled={!p.connected} onClick={p.onRecents} />
         <button type="button" disabled={!p.connected} onClick={p.onOpenApps} className={barButton}><Icon name="apps" /><span>アプリ</span></button>
-        {p.audio && <><div className="mx-1 h-6 w-px bg-white/[0.12]" /><button type="button" aria-label={p.muted ? "ミュート解除" : "ミュート"} title={p.muted ? "ミュート解除" : "ミュート"} onClick={p.onToggleMute} className={barButton}><Icon name={p.muted ? "mute" : "volume"} /></button><input type="range" min={0} max={1} step={0.05} value={p.volume} onChange={(e) => p.onVolume(Number(e.target.value))} className="hidden w-16 accent-accent sm:block" aria-label="音量" /></>}
+        {p.audio && <><div className="mx-1 h-6 w-px bg-white/[0.12]" /><button type="button" aria-label={p.muted ? "ミュート解除" : "ミュート"} title={p.muted ? "ミュート解除" : "ミュート"} onClick={p.onToggleMute} className={barButton}><Icon name={p.muted ? "mute" : "volume"} /></button><input type="range" min={0} max={1} step={0.05} value={p.volume} onChange={(e) => p.onVolume(Number(e.target.value))} onPointerUp={(e) => e.currentTarget.blur()} className="hidden w-16 accent-accent sm:block" aria-label="音量" /></>}
         <div className="mx-1 h-6 w-px bg-white/[0.12]" />
         <button type="button" aria-haspopup="menu" aria-expanded={p.menuOpen} onClick={() => p.onMenuOpenChange(!p.menuOpen)} className={`${barButton} ${p.menuOpen ? "bg-white/15" : ""}`}><Icon name="more" /> その他</button>
         </div>

@@ -56,7 +56,8 @@ export function LogPanel({ lines, logDir, onClose }: { lines: LogLine[]; logDir:
         <div className="min-w-0 truncate text-sm font-medium">
           ログ {logDir && <span className="ml-2 select-text text-xs font-normal text-label-2">{logDir}</span>}
         </div>
-        <CloseButton onClick={onClose} />
+        {/* Not focusable by mouse: it unmounts on click and would leave the focus on <body> (IME off) instead of the DeX input sink. */}
+        <CloseButton onClick={onClose} onMouseDown={(e) => e.preventDefault()} />
       </div>
       <div
         ref={scroller}

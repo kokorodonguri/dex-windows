@@ -87,6 +87,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
+            // A click on a toast must not take the focus off the DeX input sink (IME off on <body>).
+            onMouseDown={(e) => e.preventDefault()}
             className="pointer-events-auto rounded-2xl border border-hairline bg-surface/80 px-3.5 py-2.5 text-sm shadow-popover backdrop-blur-xl"
           >
             <div className="flex items-center gap-2">
